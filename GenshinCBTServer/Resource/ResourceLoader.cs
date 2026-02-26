@@ -3,6 +3,7 @@ using GenshinCBTServer.Data;
 using GenshinCBTServer.Excel;
 using GenshinCBTServer.Player;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NLua;
 using System.Resources;
 
@@ -37,7 +38,57 @@ namespace GenshinCBTServer
             _resourceManager.childDropData = JsonConvert.DeserializeObject<List<ChildDrop>>(File.ReadAllText("resources/ExcelOutput/DropLeafExcelConfigData.json"))!;
             _resourceManager.mainQuestDict = JsonConvert.DeserializeObject<Dictionary<uint,MainQuestData>>(File.ReadAllText("resources/ExcelOutput/MainQuestExcelConfigData.json"))!;
             _resourceManager.questDict = JsonConvert.DeserializeObject<Dictionary<uint, QuestData>>(File.ReadAllText("resources/ExcelOutput/QuestExcelConfigData.json"))!;
-            _resourceManager.triggerData = JsonConvert.DeserializeObject<List<TriggerData>>(File.ReadAllText("resources/ExcelOutput/TriggerExcelConfigData.json"))!;
+            string triggerJsonContent = File.ReadAllText("resources/ExcelOutput/TriggerExcelConfigData.json");
+            if (string.IsNullOrWhiteSpace(triggerJsonContent))
+            {
+                _resourceManager.triggerData = new List<TriggerData>();
+            }
+            else
+            {
+                try
+                {
+                    JToken token = JToken.Parse(triggerJsonContent);
+                    if (token.Type == JTokenType.Array)
+                    {
+                        _resourceManager.triggerData = token.ToObject<List<TriggerData>>() ?? new List<TriggerData>();
+                    }
+                    else if (token.Type == JTokenType.Object)
+                    {
+                        var obj = (JObject)token;
+                        if (!obj.HasValues)
+                        {
+                            // empty object {}
+                            _resourceManager.triggerData = new List<TriggerData>();
+                        }
+                        else
+                        {
+                            // try to parse as dictionary with id keys { "1": {...}, "2": {...} }
+                            try
+                            {
+                                var dict = obj.ToObject<Dictionary<string, TriggerData>>();
+                                if (dict != null)
+                                    _resourceManager.triggerData = dict.Values.ToList();
+                                else
+                                    _resourceManager.triggerData = new List<TriggerData>();
+                            }
+                            catch
+                            {
+                                Server.Print("Warning: unexpected Trigger JSON object structure, using empty trigger list.");
+                                _resourceManager.triggerData = new List<TriggerData>();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _resourceManager.triggerData = new List<TriggerData>();
+                    }
+                }
+                catch (JsonException)
+                {
+                    Server.Print("Warning: invalid TriggerExcelConfigData.json, using empty trigger list.");
+                    _resourceManager.triggerData = new List<TriggerData>();
+                }
+            }
             Dictionary<uint, TalkData> talks = JsonConvert.DeserializeObject<Dictionary<uint, TalkData>>(File.ReadAllText("resources/ExcelOutput/TalkExcelConfigData.json"))!;
             Dictionary<uint, ChapterData> chapters = JsonConvert.DeserializeObject<Dictionary<uint, ChapterData>>(File.ReadAllText("resources/ExcelOutput/ChapterExcelConfigData.json"))!;
             _resourceManager.talkData = talks.Values.ToList();
